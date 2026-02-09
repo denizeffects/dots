@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>dots.</title>
 
   <!-- Favicon: white dot -->
@@ -27,9 +27,14 @@
       background: #000;
       overflow: hidden;
       height: 100vh;
+      height: 100dvh;
       width: 100vw;
       cursor: crosshair;
       transition: background 0.6s ease;
+      touch-action: none;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
     }
     body.light {
       background: #f0f0f0;
@@ -39,6 +44,7 @@
       position: fixed;
       top: 0;
       left: 0;
+      touch-action: none;
     }
     .buttons {
       position: fixed;
@@ -49,7 +55,7 @@
       gap: 20px;
       z-index: 10;
     }
-    .buttons a, .theme-toggle {
+    .buttons a, .ctrl-btn {
       color: #fff;
       text-decoration: none;
       font-family: 'Courier New', Courier, monospace;
@@ -57,6 +63,7 @@
       letter-spacing: 1px;
       transition: opacity 0.3s ease, color 0.6s ease;
       opacity: 0.6;
+      -webkit-tap-highlight-color: transparent;
     }
     .buttons a:hover, .ctrl-btn:hover {
       opacity: 1;
@@ -74,17 +81,24 @@
       border: none;
       cursor: pointer;
       padding: 0;
-      color: #fff;
-      text-decoration: none;
-      font-family: 'Courier New', Courier, monospace;
-      font-size: 12px;
-      letter-spacing: 1px;
-      transition: opacity 0.3s ease, color 0.6s ease;
-      opacity: 0.6;
     }
     body.light .buttons a,
     body.light .ctrl-btn {
       color: #111;
+    }
+    @media (max-width: 600px) {
+      .buttons {
+        bottom: 18px;
+        gap: 14px;
+      }
+      .buttons a, .ctrl-btn {
+        font-size: 11px;
+      }
+      .controls {
+        bottom: 18px;
+        right: 16px;
+        gap: 12px;
+      }
     }
   </style>
 </head>
@@ -111,9 +125,13 @@
   <script type="module">
     import * as THREE from 'three';
 
+    // ─── Device detection ─────────────────────────────────
+    const isMobile = /Android|iPhone|iPad|iPod|webOS/i.test(navigator.userAgent)
+      || (navigator.maxTouchPoints > 1);
+
     // ─── Theme state ──────────────────────────────────────
     let isDark = true;
-    let themeT = 1.0;          // 1 = dark, 0 = light (animated)
+    let themeT = 1.0;
     const themeBtn = document.getElementById('themeToggle');
 
     themeBtn.addEventListener('click', () => {
@@ -132,9 +150,12 @@
     );
     camera.position.z = 9;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({
+      antialias: !isMobile,
+      powerPreference: isMobile ? 'low-power' : 'high-performance',
+    });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2));
     renderer.setClearColor(0x000000, 1);
     document.body.prepend(renderer.domElement);
 
@@ -148,12 +169,12 @@
     `;
 
     const bgFrag = `
-      precision highp float;
+      precision ${ isMobile ? 'mediump' : 'highp' } float;
 
       uniform float uTime;
       uniform vec2  uMouse;
       uniform vec2  uResolution;
-      uniform float uTheme;    // 1.0 = dark, 0.0 = light
+      uniform float uTheme;
 
       varying vec2 vUv;
 
@@ -175,7 +196,7 @@
       float fbm(vec2 p) {
         float v = 0.0, a = 0.5;
         mat2 r = mat2(0.8, 0.6, -0.6, 0.8);
-        for (int i = 0; i < 6; i++) {
+        for (int i = 0; i < ${ isMobile ? 4 : 6 }; i++) {
           v += a * noise(p);
           p = r * p * 2.0;
           a *= 0.5;
@@ -219,15 +240,10 @@
         vig = vig * vig;
         col *= vig;
 
-        // Theme-aware output
         vec3 darkBg  = vec3(0.002, 0.002, 0.005);
         vec3 lightBg = vec3(0.935, 0.93, 0.925);
-
-        // Dark mode: additive glow on black
         vec3 darkResult = darkBg + col * 0.3;
 
-        // Light mode: colors tint the surface (mix, not add)
-        // Softer pastel palette for light
         vec3 lightCol = vec3(0.0);
         lightCol += vec3(0.45, 0.85, 0.92) * b_cyan;
         lightCol += vec3(0.50, 0.82, 0.70) * b_teal;
@@ -237,15 +253,11 @@
         lightCol *= 0.45 + 0.2 * n2;
         lightCol *= vig;
 
-        // Blend pastel tints into the light base
         float intensity = clamp(length(lightCol) * 0.7, 0.0, 1.0);
         vec3 lightResult = mix(lightBg, lightCol * 0.95 + 0.35, intensity * 0.35);
-
-        // Subtle warm/cool variation across the surface in light mode
         lightResult += (n1 - 0.5) * 0.015;
 
         vec3 final = mix(lightResult, darkResult, uTheme);
-
         gl_FragColor = vec4(final, 1.0);
       }
     `;
@@ -274,7 +286,7 @@
 
     // ─── Dot textures ─────────────────────────────────────
     function makeDotTexture(color) {
-      const s = 64;
+      const s = isMobile ? 32 : 64;
       const c = document.createElement('canvas');
       c.width = s; c.height = s;
       const ctx = c.getContext('2d');
@@ -290,7 +302,7 @@
     const darkDotTex  = makeDotTexture('#1a1a1a');
 
     // ─── Shape generation ──────────────────────────────────
-    const PARTICLE_COUNT = 7000;
+    const PARTICLE_COUNT = isMobile ? 4000 : 7000;
     const RADIUS = 3.0;
     const CUBE_HALF = 2.0;
 
@@ -308,7 +320,7 @@
 
     // Cube — structured grid on 6 faces
     const cubeLocal = new Float32Array(PARTICLE_COUNT * 3);
-    const GRID = 35;  // 35*35 = 1225 per face, fills 7000 across 6 faces
+    const GRID = isMobile ? 26 : 35;
     let ci = 0;
     for (let face = 0; face < 6 && ci < PARTICLE_COUNT; face++) {
       for (let i = 0; i < GRID && ci < PARTICLE_COUNT; i++) {
@@ -350,7 +362,7 @@
 
     const globeMat = new THREE.PointsMaterial({
       color: 0xffffff,
-      size: 0.055,
+      size: isMobile ? 0.07 : 0.055,
       sizeAttenuation: true,
       map: whiteDotTex,
       transparent: true,
@@ -366,7 +378,7 @@
     const tempVec   = new THREE.Vector3();
 
     // ─── Background stars ─────────────────────────────────
-    const STARS = 250;
+    const STARS = isMobile ? 120 : 250;
     const starArr = new Float32Array(STARS * 3);
     for (let i = 0; i < STARS; i++) {
       starArr[i * 3]     = (Math.random() - 0.5) * 50;
@@ -388,20 +400,44 @@
     const stars = new THREE.Points(starGeo, starMat);
     scene.add(stars);
 
-    // ─── Mouse tracking ───────────────────────────────────
+    // ─── Input tracking (mouse + touch) ───────────────────
     const mouseNDC = new THREE.Vector2(9999, 9999);
     const smoothMouse = new THREE.Vector2(0, 0);
     let mouseActive = false;
 
-    document.addEventListener('mousemove', (e) => {
-      mouseNDC.x =  (e.clientX / window.innerWidth)  * 2 - 1;
-      mouseNDC.y = -(e.clientY / window.innerHeight) * 2 + 1;
+    function setPointer(x, y) {
+      mouseNDC.x =  (x / window.innerWidth)  * 2 - 1;
+      mouseNDC.y = -(y / window.innerHeight) * 2 + 1;
       mouseActive = true;
-    });
-    document.addEventListener('mouseleave', () => {
+    }
+    function clearPointer() {
       mouseActive = false;
       mouseNDC.set(9999, 9999);
-    });
+    }
+
+    // Mouse
+    document.addEventListener('mousemove', (e) => setPointer(e.clientX, e.clientY));
+    document.addEventListener('mouseleave', clearPointer);
+
+    // Touch
+    document.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      const t = e.touches[0];
+      setPointer(t.clientX, t.clientY);
+    }, { passive: false });
+
+    document.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      const t = e.touches[0];
+      setPointer(t.clientX, t.clientY);
+    }, { passive: false });
+
+    document.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      clearPointer();
+    }, { passive: false });
+
+    document.addEventListener('touchcancel', clearPointer);
 
     // ─── Raycaster ────────────────────────────────────────
     const raycaster     = new THREE.Raycaster();
@@ -425,6 +461,16 @@
 
     renderer.autoClear = false;
 
+    // Pre-compute constants outside loop
+    const DAMP        = 0.85;
+    const REP_STR     = 350.0;
+    const REP_INNER   = 1.5;
+    const CUTOFF_SQ   = 3.5 * 3.5;
+    const MIN_DIST    = 0.4;
+    const MAX_VEL     = 2.5;
+    const RETURN_LERP = 0.045;
+    const INV_REP_SQ  = 1 / (REP_INNER * REP_INNER);
+
     function animate() {
       requestAnimationFrame(animate);
 
@@ -433,12 +479,11 @@
       prev = now;
       elapsed += dt;
 
-      // ── Animate theme transition ──
+      // ── Theme transition ──
       const targetT = isDark ? 1.0 : 0.0;
       themeT += (targetT - themeT) * 0.04;
       bgUniforms.uTheme.value = themeT;
 
-      // Swap particle/star visuals based on theme
       const inLight = themeT < 0.5;
       globeMat.map = inLight ? darkDotTex : whiteDotTex;
       globeMat.color.setHex(inLight ? 0x1a1a1a : 0xffffff);
@@ -446,7 +491,7 @@
       starMat.color.setHex(inLight ? 0x333333 : 0xffffff);
       starMat.opacity = inLight ? 0.35 : 0.55;
 
-      // ── Smooth mouse for background shader ──
+      // ── Smooth mouse for bg shader ──
       if (mouseActive) {
         smoothMouse.x += (mouseNDC.x - smoothMouse.x) * 0.04;
         smoothMouse.y += (mouseNDC.y - smoothMouse.y) * 0.04;
@@ -458,13 +503,13 @@
       bgUniforms.uTime.value = elapsed;
       bgUniforms.uMouse.value.copy(smoothMouse);
 
-      // ── Advance rotation ──
+      // ── Rotation ──
       rotX += 0.12 * dt;
       rotY += 0.20 * dt;
       euler.set(rotX, rotY, 0);
       rotMatrix.makeRotationFromEuler(euler);
 
-      // ── Compute home positions ──
+      // ── Home positions ──
       for (let i = 0; i < N; i++) {
         const i3 = i * 3;
         tempVec.set(origLocal[i3], origLocal[i3 + 1], origLocal[i3 + 2]);
@@ -480,7 +525,7 @@
         stars.position.y += (mouseNDC.y * 0.3 - stars.position.y) * 0.02;
       }
 
-      // ── Mouse → world space (smoothed) ──
+      // ── Pointer → world space ──
       if (mouseActive) {
         raycaster.setFromCamera(mouseNDC, camera);
         const hit = raycaster.ray.intersectPlane(iPlane, hitPt);
@@ -491,61 +536,56 @@
       mouse3D.lerp(mouse3DTarget, 0.15);
 
       // ── Particle physics ──
-      const DAMP        = 0.85;
-      const REP_STR     = 350.0;
-      const REP_INNER   = 1.5;
-      const CUTOFF      = 3.5;
-      const MIN_DIST    = 0.4;
-      const MAX_VEL     = 2.5;
-      const RETURN_LERP = 0.045;
-
-      const posAttr = globeGeo.getAttribute('position');
+      const posArr = globeGeo.getAttribute('position').array;
+      const mx = mouse3D.x, my = mouse3D.y, mz = mouse3D.z;
 
       for (let i = 0; i < N; i++) {
         const i3 = i * 3;
 
-        const cx = posAttr.array[i3];
-        const cy = posAttr.array[i3 + 1];
-        const cz = posAttr.array[i3 + 2];
+        const cx = posArr[i3];
+        const cy = posArr[i3 + 1];
+        const cz = posArr[i3 + 2];
 
-        const dx = cx - mouse3D.x;
-        const dy = cy - mouse3D.y;
-        const dz = cz - mouse3D.z;
+        const dx = cx - mx;
+        const dy = cy - my;
+        const dz = cz - mz;
         const distSq = dx * dx + dy * dy + dz * dz;
 
-        if (mouseActive && distSq > 0.000001 && distSq < CUTOFF * CUTOFF) {
-          const dist     = Math.sqrt(distSq);
-          const effDist  = Math.max(dist, MIN_DIST);
-          const gaussian = Math.exp(-distSq / (REP_INNER * REP_INNER));
-          const force    = REP_STR * gaussian;
-          const invD     = 1 / effDist;
-          vel[i3]     += dx * invD * force * dt;
-          vel[i3 + 1] += dy * invD * force * dt;
-          vel[i3 + 2] += dz * invD * force * dt;
+        if (mouseActive && distSq > 0.000001 && distSq < CUTOFF_SQ) {
+          const dist    = Math.sqrt(distSq);
+          const effDist = dist > MIN_DIST ? dist : MIN_DIST;
+          const force   = REP_STR * Math.exp(-distSq * INV_REP_SQ);
+          const invD    = 1 / effDist;
+          const fdt     = force * dt;
+          vel[i3]     += dx * invD * fdt;
+          vel[i3 + 1] += dy * invD * fdt;
+          vel[i3 + 2] += dz * invD * fdt;
         }
 
         vel[i3]     *= DAMP;
         vel[i3 + 1] *= DAMP;
         vel[i3 + 2] *= DAMP;
 
-        vel[i3]     = Math.max(-MAX_VEL, Math.min(MAX_VEL, vel[i3]));
-        vel[i3 + 1] = Math.max(-MAX_VEL, Math.min(MAX_VEL, vel[i3 + 1]));
-        vel[i3 + 2] = Math.max(-MAX_VEL, Math.min(MAX_VEL, vel[i3 + 2]));
+        let vx = vel[i3], vy = vel[i3 + 1], vz = vel[i3 + 2];
+        if (vx >  MAX_VEL) vx =  MAX_VEL; else if (vx < -MAX_VEL) vx = -MAX_VEL;
+        if (vy >  MAX_VEL) vy =  MAX_VEL; else if (vy < -MAX_VEL) vy = -MAX_VEL;
+        if (vz >  MAX_VEL) vz =  MAX_VEL; else if (vz < -MAX_VEL) vz = -MAX_VEL;
+        vel[i3] = vx; vel[i3 + 1] = vy; vel[i3 + 2] = vz;
 
-        let nx = cx + vel[i3];
-        let ny = cy + vel[i3 + 1];
-        let nz = cz + vel[i3 + 2];
+        let nx = cx + vx;
+        let ny = cy + vy;
+        let nz = cz + vz;
 
         nx += (homePos[i3]     - nx) * RETURN_LERP;
         ny += (homePos[i3 + 1] - ny) * RETURN_LERP;
         nz += (homePos[i3 + 2] - nz) * RETURN_LERP;
 
-        posAttr.array[i3]     = nx;
-        posAttr.array[i3 + 1] = ny;
-        posAttr.array[i3 + 2] = nz;
+        posArr[i3]     = nx;
+        posArr[i3 + 1] = ny;
+        posArr[i3 + 2] = nz;
       }
 
-      posAttr.needsUpdate = true;
+      globeGeo.getAttribute('position').needsUpdate = true;
 
       renderer.clear();
       renderer.render(bgScene, bgCamera);
