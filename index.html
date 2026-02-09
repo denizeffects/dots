@@ -148,7 +148,7 @@
       0.1,
       200
     );
-    camera.position.z = 9;
+    camera.position.z = isMobile ? 12 : 9;
 
     const renderer = new THREE.WebGLRenderer({
       antialias: !isMobile,
@@ -419,25 +419,27 @@
     document.addEventListener('mousemove', (e) => setPointer(e.clientX, e.clientY));
     document.addEventListener('mouseleave', clearPointer);
 
-    // Touch
-    document.addEventListener('touchstart', (e) => {
+    // Touch — on canvas only so buttons remain tappable
+    const cvs = renderer.domElement;
+
+    cvs.addEventListener('touchstart', (e) => {
       e.preventDefault();
       const t = e.touches[0];
       setPointer(t.clientX, t.clientY);
     }, { passive: false });
 
-    document.addEventListener('touchmove', (e) => {
+    cvs.addEventListener('touchmove', (e) => {
       e.preventDefault();
       const t = e.touches[0];
       setPointer(t.clientX, t.clientY);
     }, { passive: false });
 
-    document.addEventListener('touchend', (e) => {
+    cvs.addEventListener('touchend', (e) => {
       e.preventDefault();
       clearPointer();
     }, { passive: false });
 
-    document.addEventListener('touchcancel', clearPointer);
+    cvs.addEventListener('touchcancel', clearPointer);
 
     // ─── Raycaster ────────────────────────────────────────
     const raycaster     = new THREE.Raycaster();
